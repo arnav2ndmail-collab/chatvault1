@@ -1,3 +1,5 @@
 yt-dlp
 chat-downloader
+flask
+flask-cors
 python-dotenv
