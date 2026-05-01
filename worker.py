@@ -27,6 +27,17 @@ PORT            = int(os.environ.get("PORT", "8080"))
 TEMP_DIR = Path("./tmp_chats")
 TEMP_DIR.mkdir(exist_ok=True)
 
+# Write YouTube cookies from env var to a file (bypasses bot detection on cloud servers)
+COOKIES_FILE = None
+_cookies_content = os.environ.get("YOUTUBE_COOKIES", "").strip()
+if _cookies_content:
+    COOKIES_FILE = str(TEMP_DIR / "yt_cookies.txt")
+    with open(COOKIES_FILE, "w", encoding="utf-8") as _cf:
+        _cf.write(_cookies_content)
+    print("[INIT] YouTube cookies loaded from env var")
+else:
+    print("[INIT] No YOUTUBE_COOKIES env var — YouTube may block cloud server IP")
+
 def find_exe(name):
     found = shutil.which(name)
     if found: return found
@@ -38,6 +49,13 @@ def find_exe(name):
     ]:
         if os.path.isfile(c): return c
     return name
+
+def ytdlp_cmd(*args):
+    """Build a yt-dlp command, injecting cookies if available."""
+    cmd = [YTDLP] + list(args)
+    if COOKIES_FILE and os.path.isfile(COOKIES_FILE):
+        cmd = [YTDLP, "--cookies", COOKIES_FILE] + list(args)
+    return cmd
 
 YTDLP  = find_exe("yt-dlp")
 CHATDL = find_exe("chat_downloader")
@@ -105,13 +123,13 @@ def get_video_info(url):
     log(f"Fetching metadata for: {url}")
     try:
         r = subprocess.run(
-            [YTDLP,
+            ytdlp_cmd(
              "--dump-json",
              "--no-playlist",
              "--no-warnings",
              "--extractor-retries", "3",
              "--socket-timeout", "30",
-             url],
+             url),
             capture_output=True, text=True, timeout=60, errors="replace"
         )
         if r.stdout.strip():
@@ -128,8 +146,8 @@ def check_channel_live(channel_url):
     live_url = channel_url.rstrip("/") + "/live"
     try:
         r = subprocess.run(
-            [YTDLP, "--dump-json", "--no-playlist", "--no-warnings",
-             "--socket-timeout", "20", live_url],
+            ytdlp_cmd("--dump-json", "--no-playlist", "--no-warnings",
+             "--socket-timeout", "20", live_url),
             capture_output=True, text=True, timeout=40, errors="replace"
         )
         if r.returncode == 0 and r.stdout.strip():
@@ -266,7 +284,7 @@ def download_chat(video_url, title, channel, job_id):
             sub = TEMP_DIR / f"{job_id}_sub"
             try:
                 r2 = subprocess.run(
-                    [YTDLP,
+                    ytdlp_cmd(
                      "--skip-download",
                      "--write-subs",
                      "--write-auto-subs",
@@ -276,7 +294,7 @@ def download_chat(video_url, title, channel, job_id):
                      "--extractor-retries", "3",
                      "--socket-timeout", "30",
                      "-o", str(sub) + ".%(ext)s",
-                     video_url],
+                     video_url),
                     capture_output=True, text=True,
                     timeout=300, errors="replace"
                 )
